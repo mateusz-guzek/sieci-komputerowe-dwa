@@ -10,7 +10,15 @@
 #include <time.h>
 #include <pthread.h>
 #include <string>
+#include <iostream>
+#include <fstream>
+#include <vector>
 
+struct ClientThreadParameters
+{
+    int client;
+    std::vector<char> *buf;
+};
 void *handle_client(void *arg);
 int main()
 {
@@ -26,16 +34,27 @@ int main()
 
     listen(server_socket, 64);
 
+    std::ifstream file("res/plik", std::ios::binary | std::ios::ate);
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<char> buffer(size);
+    if (!file.read(buffer.data(), size))
+    {
+        exit(1);
+    }
+
     while (1)
     {
         int client_socket = accept(server_socket, NULL, NULL);
 
-        int *client = new int;
-        *client = client_socket;
-
         pthread_t thread;
+        ClientThreadParameters *params = new ClientThreadParameters;
 
-        pthread_create(&thread, NULL, handle_client, client);
+        params->client = client_socket;
+        params->buf = &buffer;
+
+        pthread_create(&thread, NULL, handle_client, params);
         pthread_detach(thread);
     }
 
@@ -43,28 +62,21 @@ int main()
 
     return 0;
 };
-
 void *handle_client(void *arg)
 {
-    int client_socket = *(int *)arg;
-    delete (int *)arg;
+    auto *params = static_cast<ClientThreadParameters *>(arg);
 
-    char buf[1024];
+    int client_socket = params->client;
+    const std::vector<char> *buffer = params->buf;
 
-    while (1)
-    {
-        ssize_t n = read(client_socket, buf, sizeof(buf));
+    delete params;
 
-        std::string data(buf, n);
-
-        std::string response = "Serwer: " + data;
-
-        if (n <= 0)
-            break;
-
-        write(client_socket, response.c_str(), response.size());
-    }
+    write(
+        client_socket,
+        buffer->data(),
+        buffer->size());
 
     close(client_socket);
+
     return NULL;
 }
